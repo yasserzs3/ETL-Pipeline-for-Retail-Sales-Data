@@ -8,6 +8,8 @@ import logging
 import pandas as pd
 from sqlalchemy import create_engine
 from dotenv import load_dotenv
+from airflow.providers.postgres.hooks.postgres import PostgresHook
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -127,6 +129,37 @@ def validate_schemas(df_postgres, df_csv):
     except Exception as e:
         logger.error(f"Error validating schemas: {str(e)}")
         return False
+
+def extract_data(**kwargs):
+    """
+    Extract data from PostgreSQL and CSV for the execution date.
+    
+    Args:
+        **kwargs: Airflow context variables
+        
+    Returns:
+        dict: JSON strings of online and in-store sales data
+    """
+    # 1. Extract from PostgreSQL
+    pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
+    execution_date = kwargs['ds']
+    sql = f"""
+        SELECT product_id, quantity, sale_amount
+        FROM online_sales
+        WHERE sale_date = '{execution_date}';
+    """
+    online_df = pg_hook.get_pandas_df(sql)
+    
+    # 2. Extract from CSV
+    csv_path = '/opt/airflow/data/input/in_store_sales.csv'
+    in_store_df = pd.read_csv(csv_path)
+    in_store_df = in_store_df[in_store_df['sale_date'] == execution_date]
+    
+    # Return data via XCom (small datasets only!)
+    return {
+        'online_data': online_df.to_json(),
+        'in_store_data': in_store_df.to_json()
+    }
 
 def extract():
     """

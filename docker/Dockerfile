@@ -1,22 +1,20 @@
-FROM apache/airflow:2.7.1-python3.10
+FROM apache/airflow:2.5.0
 
+# Install additional dependencies
 USER root
-
-# Install system dependencies
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        build-essential \
-        default-libmysqlclient-dev \
-    && apt-get clean \
+RUN apt-get update && \
+    apt-get install -y --no-install-recommends \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
+# Switch back to airflow user
 USER airflow
 
 # Copy requirements file
-COPY requirements.txt /requirements.txt
+COPY requirements.txt /opt/airflow/requirements.txt
 
 # Install Python dependencies
-RUN pip install --no-cache-dir -r /requirements.txt
+RUN pip install --no-cache-dir -r /opt/airflow/requirements.txt
 
 # Copy project files
 COPY dags/ ${AIRFLOW_HOME}/dags/
