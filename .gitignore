@@ -83,11 +83,6 @@ venv.bak/
 *.swp
 *.swo
 
-# Data files
-*.csv
-*.json
-*.pkl
-*.h5
 
 # Logs
 logs/
