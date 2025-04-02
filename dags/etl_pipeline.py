@@ -1,6 +1,11 @@
 """
 ETL Pipeline DAG for Sales Data Processing.
 This DAG orchestrates the entire ETL process from extraction to loading.
+
+The pipeline performs the following steps:
+1. Extract: Fetches sales data from PostgreSQL and CSV sources
+2. Transform: Cleans and aggregates the data by product
+3. Load: Writes the aggregated results to PostgreSQL
 """
 
 from datetime import datetime, timedelta
@@ -36,18 +41,43 @@ extract_task = PythonOperator(
     task_id='extract',
     python_callable=extract_data,
     dag=dag,
+    doc_md="""
+    ### Extract Task
+    Fetches sales data from:
+    - PostgreSQL: Online sales data for the execution date
+    - CSV: In-store sales data for the execution date
+    
+    Returns:
+        dict: JSON strings of online and in-store sales data
+    """
 )
 
 transform_task = PythonOperator(
     task_id='transform',
     python_callable=transform_data,
     dag=dag,
+    doc_md="""
+    ### Transform Task
+    Processes the extracted data:
+    1. Combines online and in-store sales
+    2. Removes null values and invalid records
+    3. Aggregates by product_id
+    
+    Returns:
+        str: JSON string of transformed and aggregated data
+    """
 )
 
 load_task = PythonOperator(
     task_id='load',
     python_callable=load_data,
     dag=dag,
+    doc_md="""
+    ### Load Task
+    Loads the transformed data into PostgreSQL:
+    - Inserts aggregated sales data into sales_summary table
+    - Uses batch processing for better performance
+    """
 )
 
 # Set task dependencies

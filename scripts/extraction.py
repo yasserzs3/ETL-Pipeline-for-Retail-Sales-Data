@@ -1,6 +1,11 @@
 """
 Extraction module for ETL pipeline.
 This module handles data extraction from PostgreSQL and CSV files.
+
+The module provides functions to:
+1. Extract online sales data from PostgreSQL
+2. Extract in-store sales data from CSV
+3. Validate and combine the extracted data
 """
 
 import os
@@ -40,61 +45,27 @@ def get_postgres_connection():
         logger.error(f"Error connecting to PostgreSQL: {str(e)}")
         raise
 
-def extract_from_postgres(engine, query=None):
+def validate_dataframe(df, required_columns):
     """
-    Extract data from PostgreSQL database.
+    Validate DataFrame has required columns and non-empty.
     
     Args:
-        engine: SQLAlchemy engine for database connection
-        query: SQL query string to execute (default: query online_sales table)
+        df: DataFrame to validate
+        required_columns: List of required column names
         
     Returns:
-        pandas.DataFrame: Extracted data
+        bool: True if validation passes
     """
-    try:
-        if query is None:
-            query = """
-            SELECT 
-                product_id, 
-                date, 
-                quantity, 
-                price, 
-                quantity * price as total_amount 
-            FROM online_sales
-            """
+    if df.empty:
+        logger.warning("DataFrame is empty")
+        return False
         
-        df = pd.read_sql_query(query, engine)
-        logger.info(f"Successfully extracted {len(df)} records from PostgreSQL")
-        return df
-    except Exception as e:
-        logger.error(f"Error extracting data from PostgreSQL: {str(e)}")
-        raise
-
-def extract_from_csv(file_path=None):
-    """
-    Extract data from a CSV file.
-    
-    Args:
-        file_path: Path to the CSV file (default: data/input/in_store_sales.csv)
+    missing_cols = [col for col in required_columns if col not in df.columns]
+    if missing_cols:
+        logger.error(f"Missing required columns: {missing_cols}")
+        return False
         
-    Returns:
-        pandas.DataFrame: Extracted data
-    """
-    try:
-        if file_path is None:
-            file_path = os.path.join('data', 'input', 'in_store_sales.csv')
-        
-        if not os.path.exists(file_path):
-            error_msg = f"CSV file not found at {file_path}"
-            logger.error(error_msg)
-            raise FileNotFoundError(error_msg)
-            
-        df = pd.read_csv(file_path)
-        logger.info(f"Successfully extracted {len(df)} records from CSV at {file_path}")
-        return df
-    except Exception as e:
-        logger.error(f"Error extracting data from CSV: {str(e)}")
-        raise
+    return True
 
 def validate_schemas(df_postgres, df_csv):
     """
@@ -108,7 +79,7 @@ def validate_schemas(df_postgres, df_csv):
         bool: True if schemas are compatible
     """
     try:
-        required_columns = ['product_id', 'date', 'quantity', 'price', 'total_amount']
+        required_columns = ['product_id', 'quantity', 'sale_amount']
         
         # Check required columns in PostgreSQL data
         postgres_columns = set(df_postgres.columns)
@@ -140,56 +111,62 @@ def extract_data(**kwargs):
     Returns:
         dict: JSON strings of online and in-store sales data
     """
-    # 1. Extract from PostgreSQL
-    pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
-    execution_date = kwargs['ds']
-    sql = f"""
-        SELECT product_id, quantity, sale_amount
-        FROM online_sales
-        WHERE sale_date = '{execution_date}';
-    """
-    online_df = pg_hook.get_pandas_df(sql)
-    
-    # 2. Extract from CSV
-    csv_path = '/opt/airflow/data/input/in_store_sales.csv'
-    in_store_df = pd.read_csv(csv_path)
-    in_store_df = in_store_df[in_store_df['sale_date'] == execution_date]
-    
-    # Return data via XCom (small datasets only!)
-    return {
-        'online_data': online_df.to_json(),
-        'in_store_data': in_store_df.to_json()
-    }
-
-def extract():
-    """
-    Main function to extract data from all sources.
-    
-    Returns:
-        tuple: (PostgreSQL DataFrame, CSV DataFrame)
-    """
     try:
-        # Extract from PostgreSQL
-        engine = get_postgres_connection()
-        df_postgres = extract_from_postgres(engine)
+        # 1. Extract from PostgreSQL
+        logger.info("Extracting online sales data from PostgreSQL")
+        pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
+        execution_date = kwargs['ds']
         
-        # Extract from CSV
-        df_csv = extract_from_csv()
+        sql = f"""
+            SELECT product_id, quantity, sale_amount
+            FROM online_sales
+            WHERE sale_date = '{execution_date}';
+        """
+        online_df = pg_hook.get_pandas_df(sql)
         
-        # Validate schemas
-        if not validate_schemas(df_postgres, df_csv):
-            raise ValueError("Schema validation failed")
+        # Validate online data
+        if not validate_dataframe(online_df, ['product_id', 'quantity', 'sale_amount']):
+            raise ValueError("Online sales data validation failed")
             
-        return df_postgres, df_csv
+        logger.info(f"Extracted {len(online_df)} online sales records")
+        
+        # 2. Extract from CSV
+        logger.info("Extracting in-store sales data from CSV")
+        csv_path = '/opt/airflow/data/input/in_store_sales.csv'
+        if not os.path.exists(csv_path):
+            raise FileNotFoundError(f"CSV file not found at {csv_path}")
+            
+        in_store_df = pd.read_csv(csv_path)
+        in_store_df = in_store_df[in_store_df['sale_date'] == execution_date]
+        
+        # Validate in-store data
+        if not validate_dataframe(in_store_df, ['product_id', 'quantity', 'sale_amount']):
+            raise ValueError("In-store sales data validation failed")
+            
+        logger.info(f"Extracted {len(in_store_df)} in-store sales records")
+        
+        # Validate schemas are compatible
+        if not validate_schemas(online_df, in_store_df):
+            raise ValueError("Schema validation failed between online and in-store data")
+        
+        # Return data via XCom (small datasets only!)
+        return {
+            'online_data': online_df.to_json(),
+            'in_store_data': in_store_df.to_json()
+        }
+        
     except Exception as e:
-        logger.error(f"Extraction process failed: {str(e)}")
+        logger.error(f"Data extraction failed: {str(e)}")
         raise
 
 if __name__ == "__main__":
     # For testing
     try:
-        online_sales, in_store_sales = extract()
-        print(f"Online sales shape: {online_sales.shape}")
-        print(f"In-store sales shape: {in_store_sales.shape}")
+        # Create a mock execution date for testing
+        test_date = datetime.now().strftime('%Y-%m-%d')
+        result = extract_data(ds=test_date)
+        print("Extraction test successful")
+        print(f"Online data records: {len(pd.read_json(result['online_data']))}")
+        print(f"In-store data records: {len(pd.read_json(result['in_store_data']))}")
     except Exception as e:
         print(f"Error: {str(e)}") 
