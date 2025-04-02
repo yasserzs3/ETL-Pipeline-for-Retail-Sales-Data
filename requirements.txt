@@ -1,0 +1,9 @@
+apache-airflow==2.7.1
+pandas==2.1.0
+psycopg2-binary==2.9.7
+pymysql==1.1.0
+sqlalchemy==2.0.20
+python-dotenv==1.0.0
+numpy==1.25.2
+pytest==7.4.0
+flake8==6.1.0 
