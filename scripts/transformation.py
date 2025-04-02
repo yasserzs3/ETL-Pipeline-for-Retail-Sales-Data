@@ -2,12 +2,9 @@
 Transformation module for ETL pipeline.
 
 This module handles data cleaning, validation, and aggregation of sales data.
-It combines online and in-store sales data and produces aggregated sales metrics.
 """
 
 import logging
-from typing import Dict, Optional
-
 import pandas as pd
 
 # Configure logging
@@ -17,7 +14,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-def load_and_validate_data(data: Dict[str, str]) -> tuple[pd.DataFrame, pd.DataFrame]:
+def load_and_validate_data(data):
     """
     Load and validate data from XCom.
     
@@ -25,14 +22,11 @@ def load_and_validate_data(data: Dict[str, str]) -> tuple[pd.DataFrame, pd.DataF
         data: Dictionary containing JSON strings of online and in-store data
         
     Returns:
-        tuple: (online_df, in_store_df) - Validated DataFrames
-        
-    Raises:
-        ValueError: If data is invalid or missing
+        Tuple of online_df, in_store_df
     """
     if not data:
         raise ValueError("No data received from extract task")
-    
+        
     logger.info("Loading DataFrames from XCom")
     online_df = pd.read_json(data['online_data'])
     in_store_df = pd.read_json(data['in_store_data'])
@@ -42,7 +36,7 @@ def load_and_validate_data(data: Dict[str, str]) -> tuple[pd.DataFrame, pd.DataF
     
     return online_df, in_store_df
 
-def convert_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFrame:
+def convert_numeric_columns(df, columns):
     """
     Convert specified columns to numeric type.
     
@@ -57,7 +51,7 @@ def convert_numeric_columns(df: pd.DataFrame, columns: list[str]) -> pd.DataFram
         df[col] = pd.to_numeric(df[col])
     return df
 
-def clean_data(df: pd.DataFrame) -> pd.DataFrame:
+def clean_data(df):
     """
     Clean data by removing invalid entries.
     
@@ -79,7 +73,7 @@ def clean_data(df: pd.DataFrame) -> pd.DataFrame:
     logger.info(f"Data shape after cleaning: {df.shape}")
     return df
 
-def aggregate_sales(df: pd.DataFrame) -> pd.DataFrame:
+def aggregate_sales(df):
     """
     Aggregate sales data by product.
     
@@ -94,7 +88,7 @@ def aggregate_sales(df: pd.DataFrame) -> pd.DataFrame:
         total_sale_amount=('sale_amount', 'sum')
     ).reset_index()
 
-def transform_data(**kwargs) -> str:
+def transform_data(**kwargs):
     """
     Transform and aggregate sales data from online and in-store sources.
     
@@ -102,10 +96,7 @@ def transform_data(**kwargs) -> str:
         **kwargs: Airflow context variables
         
     Returns:
-        str: JSON string of transformed data
-        
-    Raises:
-        ValueError: If data transformation fails
+        JSON string of transformed data
     """
     try:
         # Load and validate data
@@ -141,7 +132,6 @@ def transform_data(**kwargs) -> str:
 
 if __name__ == "__main__":
     # For testing
-    import json
     from datetime import datetime
     
     test_date = datetime.now().strftime('%Y-%m-%d')
