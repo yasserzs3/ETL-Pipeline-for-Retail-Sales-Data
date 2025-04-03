@@ -14,10 +14,6 @@ from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.utils.log.logging_mixin import LoggingMixin
-
-# Initialize logger
-logger = LoggingMixin().log
 
 # Constants
 REQUIRED_COLUMNS = ['product_id', 'quantity', 'sale_amount', 'sale_date']
@@ -87,12 +83,9 @@ def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataF
     Returns:
         DataFrame containing online sales data
     """
-    logger.info("Extracting online sales data from PostgreSQL")
-    
     sql = EXTRACT_ONLINE_SALES
     
     online_df = pg_hook.get_pandas_df(sql)
-    logger.info(f"Extracted {len(online_df)} online sales records")
     
     validate_dataframe(online_df, REQUIRED_COLUMNS)
     return online_df
@@ -107,8 +100,6 @@ def extract_store_sales(execution_date: str) -> pd.DataFrame:
     Returns:
         DataFrame containing in-store sales data
     """
-    logger.info("Extracting in-store sales data from CSV")
-    
     if not os.path.exists(CSV_PATH):
         raise FileNotFoundError(f"CSV file not found at {CSV_PATH}")
             
@@ -121,7 +112,6 @@ def extract_store_sales(execution_date: str) -> pd.DataFrame:
     for col in NUMERIC_COLUMNS:
         in_store_df[col] = in_store_df[col].astype(str)
     
-    logger.info(f"Extracted {len(in_store_df)} in-store sales records")
     validate_dataframe(in_store_df, REQUIRED_COLUMNS)
     
     return in_store_df
@@ -145,10 +135,8 @@ def setup_source_data(execution_date: str) -> None:
         cursor.execute(INSERT_SAMPLE_DATA, [execution_date] * 5)
         
         conn.commit()
-        logger.info("Successfully set up source data")
         
     except Exception as e:
-        logger.error(f"Failed to set up source data: {str(e)}")
         if 'conn' in locals():
             conn.rollback()
         raise
@@ -170,7 +158,6 @@ def extract_data(**kwargs) -> Dict[str, str]:
     try:
         # Get execution date
         execution_date = kwargs.get('ds', datetime.now().strftime('%Y-%m-%d'))
-        logger.info(f"Extracting data for date: {execution_date}")
         
         # Extract from both sources
         pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
@@ -184,7 +171,6 @@ def extract_data(**kwargs) -> Dict[str, str]:
         }
         
     except Exception as e:
-        logger.error(f"Data extraction failed: {str(e)}")
         raise
 
 if __name__ == "__main__":

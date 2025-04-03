@@ -5,10 +5,6 @@ This module handles data cleaning, validation, and aggregation of sales data.
 """
 
 import pandas as pd
-from airflow.utils.log.logging_mixin import LoggingMixin
-
-# Initialize logger
-logger = LoggingMixin().log
 
 def load_and_validate_data(data):
     """
@@ -23,12 +19,8 @@ def load_and_validate_data(data):
     if not data:
         raise ValueError("No data received from extract task")
         
-    logger.info("Loading DataFrames from XCom")
     online_df = pd.read_json(data['online_data'])
     in_store_df = pd.read_json(data['in_store_data'])
-    
-    logger.info(f"Loaded online data: {online_df.shape} rows")
-    logger.info(f"Loaded in-store data: {in_store_df.shape} rows")
     
     return online_df, in_store_df
 
@@ -66,7 +58,6 @@ def clean_data(df):
         (df['sale_amount'] > 0)
     ]
     
-    logger.info(f"Data shape after cleaning: {df.shape}")
     return df
 
 def aggregate_sales(df):
@@ -105,25 +96,20 @@ def transform_data(**kwargs):
         in_store_df = convert_numeric_columns(in_store_df, numeric_columns)
         
         # Combine data sources
-        logger.info("Combining data sources")
         combined_df = pd.concat([online_df, in_store_df])
-        logger.info(f"Combined data shape: {combined_df.shape}")
         
         # Clean and validate
         combined_df = clean_data(combined_df)
         
         # Aggregate sales
-        logger.info("Aggregating sales data")
         aggregated_df = aggregate_sales(combined_df)
         
         # Add execution date as the processing date
         aggregated_df['sale_date'] = kwargs['ds']
         
-        logger.info(f"Final aggregated data shape: {aggregated_df.shape}")
         return aggregated_df.to_json()
         
     except Exception as e:
-        logger.error(f"Transform task failed: {str(e)}")
         raise
 
 if __name__ == "__main__":

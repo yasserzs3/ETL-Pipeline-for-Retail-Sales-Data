@@ -6,14 +6,9 @@ It manages table creation, data validation, and batch inserts with proper error 
 """
 
 from typing import List, Tuple
-import time
 
 import pandas as pd
 from airflow.providers.postgres.hooks.postgres import PostgresHook
-from airflow.utils.log.logging_mixin import LoggingMixin
-
-# Initialize logger
-logger = LoggingMixin().log
 
 # SQL Statements
 CREATE_TABLE_SQL = """
@@ -70,9 +65,7 @@ def prepare_database(cursor) -> None:
     """
     try:
         cursor.execute(CREATE_TABLE_SQL)
-        logger.info("Table sales_summary created or verified")
     except Exception as e:
-        logger.error(f"Failed to create table: {str(e)}")
         raise
 
 def load_data(**kwargs) -> None:
@@ -86,41 +79,18 @@ def load_data(**kwargs) -> None:
         ValueError: If data loading fails
     """
     try:
-        # Start timing the operation
-        start_time = time.time()
-        
         # Get task instance for XCom
         ti = kwargs['ti']
-        
-        # Log load operation started
-        ti.xcom_push(key='load_operation_status', value='STARTED')
-        logger.info("Starting load operation")
         
         # Get transformed data
         data_json = ti.xcom_pull(task_ids='transform')
         if not data_json:
             error_msg = "No data received from transform task"
-            ti.xcom_push(key='load_error', value=error_msg)
             raise ValueError(error_msg)
             
         # Convert to DataFrame and validate
         df = pd.read_json(data_json)
-        record_count = len(df)
-        ti.xcom_push(key='load_records_count', value=record_count)
-        logger.info(f"Received DataFrame with shape: {df.shape}")
-        logger.info(f"DataFrame columns: {df.columns.tolist()}")
-        logger.info(f"First 5 records: \n{df.head().to_string()}")
-        
-        # Log validation start
-        validation_start = time.time()
-        ti.xcom_push(key='validation_status', value='STARTED')
-        
         validate_dataframe(df)
-        
-        # Log validation completion
-        validation_time = time.time() - validation_start
-        ti.xcom_push(key='validation_status', value='COMPLETED')
-        ti.xcom_push(key='validation_time_seconds', value=validation_time)
         
         # Ensure proper data types
         df['product_id'] = df['product_id'].astype(int)
@@ -132,59 +102,24 @@ def load_data(**kwargs) -> None:
         conn = pg_hook.get_conn()
         cursor = conn.cursor()
         
-        # Log database operation metrics
-        db_start_time = time.time()
-        ti.xcom_push(key='db_operation_status', value='STARTED')
-        
         try:
             # Prepare database
             prepare_database(cursor)
             
             # Insert new data
             tuples = list(df.itertuples(index=False, name=None))
-            insert_start_time = time.time()
-            ti.xcom_push(key='insert_operation_status', value='STARTED')
-            logger.info(f"Preparing to insert {len(tuples)} records")
-            
             cursor.executemany(INSERT_SQL, tuples)
             
-            # Log insert completion
-            insert_time = time.time() - insert_start_time
-            ti.xcom_push(key='insert_operation_status', value='COMPLETED')
-            ti.xcom_push(key='insert_time_seconds', value=insert_time)
-            ti.xcom_push(key='inserted_record_count', value=len(tuples))
-            
             conn.commit()
-            logger.info(f"Successfully loaded {len(tuples)} records")
-            
-            # Log database operation completion
-            db_total_time = time.time() - db_start_time
-            ti.xcom_push(key='db_operation_status', value='COMPLETED')
-            ti.xcom_push(key='db_operation_time_seconds', value=db_total_time)
             
         except Exception as e:
             conn.rollback()
-            error_msg = f"Database error: {str(e)}"
-            ti.xcom_push(key='db_operation_status', value='FAILED')
-            ti.xcom_push(key='db_error', value=error_msg)
-            logger.error(error_msg)
             raise e
         finally:
             cursor.close()
             conn.close()
             
-        # Log overall load operation completion
-        total_time = time.time() - start_time
-        ti.xcom_push(key='load_operation_status', value='COMPLETED')
-        ti.xcom_push(key='load_operation_time_seconds', value=total_time)
-        logger.info(f"Load operation completed in {total_time:.2f} seconds")
-            
     except Exception as e:
-        error_msg = f"Load operation failed: {str(e)}"
-        if 'ti' in locals():
-            ti.xcom_push(key='load_operation_status', value='FAILED')
-            ti.xcom_push(key='load_error', value=error_msg)
-        logger.error(error_msg)
         raise
 
 if __name__ == "__main__":
