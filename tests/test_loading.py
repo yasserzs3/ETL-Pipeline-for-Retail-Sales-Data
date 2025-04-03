@@ -9,17 +9,15 @@ import pandas as pd
 import pytest
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
-from scripts.loading import validate_dataframe, prepare_database, load_data
+from scripts.loading import validate_dataframe, load_data
 
 @pytest.fixture
 def sample_df():
     """Create a sample DataFrame for testing."""
-    test_date = datetime.now().strftime('%Y-%m-%d')
     return pd.DataFrame({
         'product_id': [1, 2],
         'total_quantity': [3, 4],
-        'total_sale_amount': [30.0, 40.0],
-        'sale_date': [test_date, test_date]
+        'total_sale_amount': [30.0, 40.0]
     })
 
 @pytest.fixture
@@ -56,12 +54,6 @@ def test_validate_dataframe_negative_amount(sample_df):
     with pytest.raises(ValueError, match="Found negative sale amounts"):
         validate_dataframe(sample_df)
 
-def test_prepare_database():
-    """Test database preparation."""
-    cursor_mock = MagicMock()
-    prepare_database(cursor_mock)
-    cursor_mock.execute.assert_called_once()
-
 def test_load_data_success(sample_df, pg_hook_mock):
     """Test successful data loading."""
     # Mock the database connection and cursor
@@ -74,18 +66,24 @@ def test_load_data_success(sample_df, pg_hook_mock):
     ti_mock = MagicMock()
     ti_mock.xcom_pull.return_value = sample_df.to_json()
     
-    with patch('scripts.loading.PostgresHook') as mock_hook_class:
+    # Mock os.makedirs and dataframe to_csv
+    with patch('scripts.loading.PostgresHook') as mock_hook_class, \
+         patch('scripts.loading.os.makedirs') as mock_makedirs, \
+         patch('pandas.DataFrame.to_csv') as mock_to_csv:
+        
         mock_hook_class.return_value = pg_hook_mock
         
-        # Execute load_data
-        load_data(ti=ti_mock)
+        # Execute load_data with required ds parameter
+        load_data(ti=ti_mock, ds="2025-04-01")
         
         # Verify database operations
-        cursor_mock.execute.assert_called()  # CREATE TABLE
-        cursor_mock.executemany.assert_called_once()  # INSERT
+        assert cursor_mock.execute.call_count >= 2  # DROP TABLE + CREATE TABLE
+        assert cursor_mock.execute.call_count >= 2 + len(sample_df)  # Previous calls + INSERT statements
         conn_mock.commit.assert_called_once()
         cursor_mock.close.assert_called_once()
         conn_mock.close.assert_called_once()
+        mock_makedirs.assert_called_once()
+        mock_to_csv.assert_called_once()
 
 def test_load_data_no_data():
     """Test load_data with no input data."""
@@ -102,17 +100,19 @@ def test_load_data_database_error(sample_df, pg_hook_mock):
     cursor_mock = MagicMock()
     pg_hook_mock.get_conn.return_value = conn_mock
     conn_mock.cursor.return_value = cursor_mock
-    cursor_mock.executemany.side_effect = Exception("Database error")
+    # Make the first execute (for DROP TABLE) work but have subsequent calls fail
+    cursor_mock.execute.side_effect = [None, Exception("Database error")]
     
     # Create mock task instance
     ti_mock = MagicMock()
     ti_mock.xcom_pull.return_value = sample_df.to_json()
     
-    with patch('scripts.loading.PostgresHook') as mock_hook_class:
+    with patch('scripts.loading.PostgresHook') as mock_hook_class, \
+         patch('scripts.loading.os.makedirs') as _:
         mock_hook_class.return_value = pg_hook_mock
         
         with pytest.raises(Exception):
-            load_data(ti=ti_mock)
+            load_data(ti=ti_mock, ds="2025-04-01")
         
         # Verify rollback was called
         conn_mock.rollback.assert_called_once()

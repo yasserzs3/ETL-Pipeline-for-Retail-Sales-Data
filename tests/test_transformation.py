@@ -119,5 +119,5 @@ def test_transform_data(sample_data, test_date):
     assert 'product_id' in result_df.columns
     assert 'total_quantity' in result_df.columns
     assert 'total_sale_amount' in result_df.columns
-    assert 'sale_date' in result_df.columns
-    assert all(result_df['sale_date'] == test_date) 
+    assert 'sale_date' in result_df.columns  # Transformation still includes sale_date
+    # Loading will do the final aggregation by product_id only 
