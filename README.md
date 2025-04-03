@@ -221,4 +221,22 @@ When developing locally:
 2. Run linting to ensure code quality
    ```bash
    flake8 dags scripts tests
-   ``` 
+   ```
+
+## Challenges and Reflections
+
+### Airflow Setup Challenges
+
+**Docker Configuration:** Configuring Airflow in Docker required balancing numerous settings while ensuring proper communication between containers. Service dependencies and startup ordering were particularly tricky to manage.
+
+**Volume Management:** Setting up proper volume mounts for DAGs, scripts, and data directories was challenging. Permissions issues occasionally arose when containers tried to write to mounted volumes.
+
+**Connection Management:** Establishing stable connections between Airflow and PostgreSQL required careful configuration. Environment variables needed to be consistent across services for seamless integration.
+
+### Pipeline Design Challenges
+
+**Data Accumulation Issue:** Earlier versions of the pipeline inadvertently accumulated data across DAG runs instead of replacing it. This was fixed by implementing table truncation and proper upsert patterns.
+
+**Separation of Responsibilities:** Initially, both transform and load steps performed aggregation, causing data duplication. We refactored to ensure all aggregation happens in the transform step only.
+
+**Error Handling:** Implementing robust error handling required careful transaction management and validation at each stage. Consistent logging patterns were crucial for troubleshooting. 
