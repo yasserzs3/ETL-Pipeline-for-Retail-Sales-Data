@@ -9,6 +9,14 @@ x-airflow-common: &airflow-common
     AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
+    # Logging configuration
+    AIRFLOW__LOGGING__LOGGING_LEVEL: 'INFO'
+    AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LEVEL: 'INFO'
+    AIRFLOW__LOGGING__TASK_LOG_READER: 'task'
+    AIRFLOW__LOGGING__COLORED_CONSOLE_LOG: 'true'
+    AIRFLOW__LOGGING__LOG_FORMAT: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    AIRFLOW__LOGGING__SIMPLE_LOG_FORMAT: '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    AIRFLOW__LOGGING__LOG_FILENAME_TEMPLATE: '{{ ti.dag_id }}/{{ ti.task_id }}/{{ ts }}/{{ try_number }}.log'
     POSTGRES_HOST: postgres
     POSTGRES_PORT: 5432
     POSTGRES_USER: airflow
@@ -18,6 +26,7 @@ x-airflow-common: &airflow-common
     - ../dags:/opt/airflow/dags
     - ../scripts:/opt/airflow/scripts
     - ../data:/opt/airflow/data
+    - ../logs:/opt/airflow/logs
   depends_on:
     postgres:
       condition: service_healthy
@@ -34,7 +43,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ../sql:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
       interval: 5s

@@ -9,19 +9,15 @@ It provides functionality to:
 """
 
 from datetime import datetime
-import logging
 import os
 from typing import Dict, List, Optional, Tuple
 
 import pandas as pd
 from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.utils.log.logging_mixin import LoggingMixin
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Initialize logger
+logger = LoggingMixin().log
 
 # Constants
 REQUIRED_COLUMNS = ['product_id', 'quantity', 'sale_amount', 'sale_date']
@@ -54,8 +50,7 @@ SELECT
     quantity::text as quantity,
     sale_amount::text as sale_amount,
     sale_date::text as sale_date
-FROM online_sales
-WHERE DATE(sale_date) = DATE(%s);
+FROM online_sales;
 """
 
 def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
@@ -83,10 +78,10 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
 
 def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataFrame:
     """
-    Extract online sales data from PostgreSQL for given date.
+    Extract all online sales data from PostgreSQL.
     
     Args:
-        execution_date: Date to extract data for
+        execution_date: Date parameter (no longer used for filtering)
         pg_hook: PostgreSQL connection hook
         
     Returns:
@@ -96,7 +91,7 @@ def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataF
     
     sql = EXTRACT_ONLINE_SALES
     
-    online_df = pg_hook.get_pandas_df(sql, parameters=[execution_date])
+    online_df = pg_hook.get_pandas_df(sql)
     logger.info(f"Extracted {len(online_df)} online sales records")
     
     validate_dataframe(online_df, REQUIRED_COLUMNS)
@@ -104,10 +99,10 @@ def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataF
 
 def extract_store_sales(execution_date: str) -> pd.DataFrame:
     """
-    Extract in-store sales data from CSV for given date.
+    Extract in-store sales data from CSV.
     
     Args:
-        execution_date: Date to extract data for
+        execution_date: Date to extract data for (no longer used for filtering)
         
     Returns:
         DataFrame containing in-store sales data
@@ -119,9 +114,8 @@ def extract_store_sales(execution_date: str) -> pd.DataFrame:
             
     in_store_df = pd.read_csv(CSV_PATH)
     
-    # Convert and filter by date
+    # Convert date format for consistency but don't filter by date
     in_store_df['sale_date'] = pd.to_datetime(in_store_df['sale_date']).dt.strftime('%Y-%m-%d')
-    in_store_df = in_store_df[in_store_df['sale_date'] == execution_date]
     
     # Convert numeric columns to strings for consistency
     for col in NUMERIC_COLUMNS:

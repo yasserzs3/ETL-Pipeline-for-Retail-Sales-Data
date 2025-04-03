@@ -4,15 +4,11 @@ Transformation module for ETL pipeline.
 This module handles data cleaning, validation, and aggregation of sales data.
 """
 
-import logging
 import pandas as pd
+from airflow.utils.log.logging_mixin import LoggingMixin
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+# Initialize logger
+logger = LoggingMixin().log
 
 def load_and_validate_data(data):
     """
@@ -75,7 +71,7 @@ def clean_data(df):
 
 def aggregate_sales(df):
     """
-    Aggregate sales data by product.
+    Aggregate sales data by product across all dates.
     
     Args:
         df: DataFrame to aggregate
@@ -120,7 +116,7 @@ def transform_data(**kwargs):
         logger.info("Aggregating sales data")
         aggregated_df = aggregate_sales(combined_df)
         
-        # Add execution date
+        # Add execution date as the processing date
         aggregated_df['sale_date'] = kwargs['ds']
         
         logger.info(f"Final aggregated data shape: {aggregated_df.shape}")
