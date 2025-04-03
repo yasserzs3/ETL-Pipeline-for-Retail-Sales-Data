@@ -33,11 +33,16 @@ def validate_dataframe(df: pd.DataFrame) -> None:
     """
     Validate DataFrame structure and content.
     
+    Checks that the DataFrame:
+    1. Is not empty
+    2. Contains all required columns
+    3. Does not contain negative quantities or sale amounts
+    
     Args:
-        df: DataFrame to validate
+        df: DataFrame to validate with columns 'product_id', 'total_quantity', 'total_sale_amount'
         
     Raises:
-        ValueError: If validation fails
+        ValueError: If DataFrame is empty, missing columns, or contains negative values
     """
     logger = logging.getLogger(__name__)
     
@@ -66,11 +71,20 @@ def load_data(**kwargs) -> None:
     """
     Load transformed data into PostgreSQL sales_summary table and save to CSV.
     
+    Main loading function that:
+    1. Retrieves transformed data from the transform task via XCom
+    2. Aggregates daily data by product_id (removing the date dimension)
+    3. Validates the data structure and content
+    4. Merges with existing CSV data if present
+    5. Saves to CSV file in the output directory
+    6. Loads into PostgreSQL using an upsert pattern (ON CONFLICT)
+    
     Args:
-        **kwargs: Airflow context variables
+        **kwargs: Airflow context variables, including task_instance
         
     Raises:
-        ValueError: If data loading fails
+        ValueError: If data is not received from transform task or validation fails
+        Exception: If database operations fail
     """
     # Set up logger
     logger = logging.getLogger(__name__)

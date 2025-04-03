@@ -22,6 +22,7 @@ from scripts.extraction import (
 def sample_df():
     """Create a sample DataFrame for testing."""
     return pd.DataFrame({
+        'sale_id': ['101', '102'],
         'product_id': ['1', '2'],
         'quantity': ['2', '3'],
         'sale_amount': ['20.0', '30.0'],

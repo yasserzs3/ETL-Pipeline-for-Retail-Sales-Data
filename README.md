@@ -44,6 +44,12 @@ Extract → Transform → Load
   - Data validation and schema checking
   - Error handling for connection issues
   - Returns structured data for the transformation step
+- **Key Functions**:
+  - `extract_data()`: Main entry point that orchestrates extraction from all sources and returns JSON strings via XCom
+  - `extract_online_sales()`: Retrieves sales data from PostgreSQL database, converting columns to string format
+  - `extract_store_sales()`: Reads CSV files and formats data (date formatting, converting numeric columns to strings)
+  - `setup_source_data()`: Creates tables and populates with sample data if they don't exist
+  - `validate_dataframe()`: Checks if the DataFrame is non-empty and contains all required columns
 
 #### 2. Transform Task
 - **Implementation**: `scripts/transformation.py`
@@ -51,21 +57,33 @@ Extract → Transform → Load
 - **Key Operations**:
   - Combines online and in-store sales data
   - Cleans invalid or null entries
-  - Aggregates sales by product_id
-  - Calculates daily totals and metrics
+  - Aggregates sales by product_id and sale_date
+  - Calculates total quantities and amounts
 - **Data Validation**:
   - Type checking and conversion
   - Handling of missing values
   - Data quality assurance
+- **Key Functions**:
+  - `transform_data()`: Main function that orchestrates the transformation process and returns JSON data
+  - `load_and_validate_data()`: Loads JSON strings from XCom and converts to DataFrames
+  - `convert_numeric_columns()`: Converts string columns to numeric types using pandas to_numeric
+  - `clean_data()`: Removes rows with null values and filters out records with non-positive quantities or amounts
+  - `aggregate_sales()`: Groups by product_id and sale_date to sum quantities and sale amounts
 
 #### 3. Load Task
 - **Implementation**: `scripts/loading.py`
 - **Purpose**: Loads processed data into target database
 - **Features**:
   - Creates or updates sales_summary table
-  - Implements batch loading for performance
-  - Ensures data integrity with transaction handling
-  - Error recovery mechanisms
+  - Implements upsert pattern for updating existing records
+  - Maintains both database and CSV output
+  - Transaction management for data integrity
+- **Key Functions**:
+  - `load_data()`: Main function that retrieves data from XCom, processes it, and loads to both CSV and database
+  - `validate_dataframe()`: Checks for required columns and ensures quantities and amounts aren't negative
+  - Uses SQL with ON CONFLICT to update existing records by adding quantities and amounts
+  - Merges new data with existing CSV data if output file already exists
+  - Saves final aggregated product-level summary (not date-level) to both database and CSV
 
 ## Implementation Details
 

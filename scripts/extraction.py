@@ -77,7 +77,7 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
         bool: True if validation passes
         
     Raises:
-        ValueError: If validation fails
+        ValueError: If DataFrame is empty or missing required columns
     """
     logger = logging.getLogger(__name__)
     
@@ -97,11 +97,18 @@ def extract_online_sales(pg_hook: PostgresHook) -> pd.DataFrame:
     """
     Extract all online sales data from PostgreSQL.
     
+    Retrieves sales data from the online_sales table, converting all columns
+    to string format for consistency. Creates the table with sample data if
+    it doesn't exist.
+    
     Args:
         pg_hook: PostgreSQL connection hook
         
     Returns:
-        DataFrame containing online sales data
+        DataFrame containing online sales data with string-type columns
+        
+    Raises:
+        Exception: If database connection or query fails
     """
     logger = logging.getLogger(__name__)
     logger.info("Starting extraction of online sales data")
@@ -138,8 +145,16 @@ def extract_store_sales() -> pd.DataFrame:
     """
     Extract in-store sales data from CSV.
     
+    Reads in-store sales data from a CSV file, converts the date format to 
+    'YYYY-MM-DD' for consistency, and converts numeric columns to strings
+    to match the format of online sales data.
+    
     Returns:
-        DataFrame containing in-store sales data
+        DataFrame containing in-store sales data with formatted dates and string-type columns
+        
+    Raises:
+        FileNotFoundError: If CSV file does not exist
+        ValueError: If validation fails
     """
     logger = logging.getLogger(__name__)
     logger.info(f"Starting extraction of in-store sales data from {CSV_PATH}")
@@ -169,8 +184,14 @@ def setup_source_data(execution_date: str) -> None:
     """
     Set up source data tables and sample data.
     
+    Creates the online_sales table if it doesn't exist and populates it
+    with sample data only if the table is empty.
+    
     Args:
-        execution_date: Current execution date
+        execution_date: Current execution date used to timestamp sample data
+        
+    Raises:
+        Exception: If database operations fail
     """
     logger = logging.getLogger(__name__)
     logger.info(f"Setting up source data for execution date: {execution_date}")
@@ -220,13 +241,21 @@ def setup_source_data(execution_date: str) -> None:
 
 def extract_data(**kwargs) -> Dict[str, str]:
     """
-    Extract data from both sources for the execution date.
+    Extract data from both online and in-store sources.
+    
+    Main entry point for the extraction task. Orchestrates the extraction of data
+    from PostgreSQL (online sales) and CSV files (in-store sales), ensuring the
+    database tables exist with sample data if needed.
     
     Args:
-        **kwargs: Airflow context variables
+        **kwargs: Airflow context variables, including 'ds' (execution date)
         
     Returns:
-        dict: JSON strings of online and in-store sales data
+        dict: Dictionary with 'online_data' and 'in_store_data' keys containing
+              JSON string representations of the respective DataFrames
+        
+    Raises:
+        Exception: If extraction from either source fails
     """
     logger = logging.getLogger(__name__)
     logger.info("Starting data extraction")

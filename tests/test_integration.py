@@ -77,7 +77,7 @@ def test_full_pipeline(test_dag, setup_test_data):
     
     assert not result_df.empty
     assert all(col in result_df.columns 
-              for col in ['product_id', 'total_quantity', 'total_sale_amount', 'sale_date'])
+              for col in ['product_id', 'total_quantity', 'total_sale_amount'])
     assert len(result_df) > 0
 
 @pytest.mark.performance

@@ -69,16 +69,19 @@ def test_load_data_success(sample_df, pg_hook_mock):
     # Mock os.makedirs and dataframe to_csv
     with patch('scripts.loading.PostgresHook') as mock_hook_class, \
          patch('scripts.loading.os.makedirs') as mock_makedirs, \
+         patch('scripts.loading.os.path.exists') as mock_exists, \
          patch('pandas.DataFrame.to_csv') as mock_to_csv:
         
         mock_hook_class.return_value = pg_hook_mock
+        mock_exists.return_value = False  # Simulate no existing CSV file
         
         # Execute load_data with required ds parameter
         load_data(ti=ti_mock, ds="2025-04-01")
         
         # Verify database operations
-        assert cursor_mock.execute.call_count >= 2  # DROP TABLE + CREATE TABLE
-        assert cursor_mock.execute.call_count >= 2 + len(sample_df)  # Previous calls + INSERT statements
+        # Should execute CREATE TABLE IF NOT EXISTS and then executemany for batch inserts
+        assert cursor_mock.execute.call_count >= 1  # At least CREATE TABLE
+        assert cursor_mock.executemany.call_count == 1  # Batch insert
         conn_mock.commit.assert_called_once()
         cursor_mock.close.assert_called_once()
         conn_mock.close.assert_called_once()
@@ -100,16 +103,19 @@ def test_load_data_database_error(sample_df, pg_hook_mock):
     cursor_mock = MagicMock()
     pg_hook_mock.get_conn.return_value = conn_mock
     conn_mock.cursor.return_value = cursor_mock
-    # Make the first execute (for DROP TABLE) work but have subsequent calls fail
-    cursor_mock.execute.side_effect = [None, Exception("Database error")]
+    # Make the execute call fail with an exception
+    cursor_mock.execute.side_effect = Exception("Database error")
     
     # Create mock task instance
     ti_mock = MagicMock()
     ti_mock.xcom_pull.return_value = sample_df.to_json()
     
     with patch('scripts.loading.PostgresHook') as mock_hook_class, \
-         patch('scripts.loading.os.makedirs') as _:
+         patch('scripts.loading.os.makedirs') as _, \
+         patch('scripts.loading.os.path.exists') as mock_exists:
+        
         mock_hook_class.return_value = pg_hook_mock
+        mock_exists.return_value = False  # Simulate no existing CSV file
         
         with pytest.raises(Exception):
             load_data(ti=ti_mock, ds="2025-04-01")

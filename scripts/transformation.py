@@ -11,11 +11,18 @@ def load_and_validate_data(data):
     """
     Load and validate data from XCom.
     
+    Loads the JSON string data from the XCom dictionary and converts it into
+    pandas DataFrames, verifying that the data exists before processing.
+    
     Args:
         data: Dictionary containing JSON strings of online and in-store data
+             with keys 'online_data' and 'in_store_data'
         
     Returns:
-        Tuple of online_df, in_store_df
+        tuple: A tuple containing (online_df, in_store_df) DataFrames
+        
+    Raises:
+        ValueError: If no data is received from extract task
     """
     logger = logging.getLogger(__name__)
     
@@ -35,12 +42,15 @@ def convert_numeric_columns(df, columns):
     """
     Convert specified columns to numeric type.
     
+    Uses pandas to_numeric function to convert string columns to appropriate
+    numeric data types for calculations.
+    
     Args:
         df: DataFrame to process
-        columns: List of columns to convert
+        columns: List of column names to convert to numeric types
         
     Returns:
-        DataFrame with converted columns
+        DataFrame: DataFrame with columns converted to numeric types
     """
     for col in columns:
         df[col] = pd.to_numeric(df[col])
@@ -50,11 +60,14 @@ def clean_data(df):
     """
     Clean data by removing invalid entries.
     
+    Removes rows with null values and filters out records with non-positive
+    quantities or sale amounts.
+    
     Args:
         df: DataFrame to clean
         
     Returns:
-        Cleaned DataFrame
+        DataFrame: Cleaned DataFrame with only valid records
     """
     logger = logging.getLogger(__name__)
     
@@ -76,13 +89,20 @@ def clean_data(df):
 
 def aggregate_sales(df):
     """
-    Aggregate sales data by product and date.
+    Aggregate sales data by product_id and sale_date.
+    
+    Groups the data by product_id and sale_date and calculates the sum of
+    quantities and sale amounts for each group.
     
     Args:
         df: DataFrame to aggregate
         
     Returns:
-        Aggregated DataFrame
+        DataFrame: Aggregated DataFrame with columns:
+                  - product_id
+                  - sale_date
+                  - total_quantity (sum of quantities)
+                  - total_sale_amount (sum of sale amounts)
     """
     logger = logging.getLogger(__name__)
     
@@ -100,11 +120,22 @@ def transform_data(**kwargs):
     """
     Transform and aggregate sales data from online and in-store sources.
     
+    Main transformation function that:
+    1. Retrieves data from the extract task via XCom
+    2. Converts string data to appropriate types
+    3. Combines online and in-store sales
+    4. Cleans the data by removing nulls and invalid values
+    5. Aggregates by product_id and sale_date
+    6. Returns the results as a JSON string
+    
     Args:
-        **kwargs: Airflow context variables
+        **kwargs: Airflow context variables, including task_instance
         
     Returns:
-        JSON string of transformed data
+        str: JSON string of transformed and aggregated data
+        
+    Raises:
+        Exception: If any step in the transformation process fails
     """
     try:
         # Set up logger
