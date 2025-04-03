@@ -2,6 +2,11 @@
 Transformation module for ETL pipeline.
 
 This module handles data cleaning, validation, and aggregation of sales data.
+It performs complete aggregation in the transformation stage, implementing:
+1. Data loading from both sources
+2. Type conversion and cleanup
+3. Removal of invalid entries
+4. Full aggregation by product_id
 """
 
 import pandas as pd
@@ -89,10 +94,10 @@ def clean_data(df):
 
 def aggregate_sales(df):
     """
-    Aggregate sales data by product_id and sale_date.
+    Aggregate sales data by product_id.
     
-    Groups the data by product_id and sale_date and calculates the sum of
-    quantities and sale amounts for each group.
+    Groups the data by product_id and calculates the sum of
+    quantities and sale amounts for each product.
     
     Args:
         df: DataFrame to aggregate
@@ -100,14 +105,13 @@ def aggregate_sales(df):
     Returns:
         DataFrame: Aggregated DataFrame with columns:
                   - product_id
-                  - sale_date
                   - total_quantity (sum of quantities)
                   - total_sale_amount (sum of sale amounts)
     """
     logger = logging.getLogger(__name__)
     
-    # Aggregate by product_id and sale_date
-    aggregated = df.groupby(['product_id', 'sale_date']).agg(
+    # Aggregate by product_id only (not by sale_date)
+    aggregated = df.groupby(['product_id']).agg(
         total_quantity=('quantity', 'sum'),
         total_sale_amount=('sale_amount', 'sum')
     ).reset_index()
@@ -125,7 +129,7 @@ def transform_data(**kwargs):
     2. Converts string data to appropriate types
     3. Combines online and in-store sales
     4. Cleans the data by removing nulls and invalid values
-    5. Aggregates by product_id and sale_date
+    5. Aggregates by product_id to calculate total quantity and total sale amount
     6. Returns the results as a JSON string
     
     Args:
@@ -152,7 +156,8 @@ def transform_data(**kwargs):
         in_store_df = convert_numeric_columns(in_store_df, numeric_columns)
         logger.info("Converted numeric columns")
         
-        # Ensure date column is in datetime format
+        # Format date columns for consistency during data processing
+        # Note: Date information will not be used in the final aggregation
         online_df['sale_date'] = pd.to_datetime(online_df['sale_date']).dt.date
         in_store_df['sale_date'] = pd.to_datetime(in_store_df['sale_date']).dt.date
         logger.info("Converted date columns")
@@ -165,7 +170,7 @@ def transform_data(**kwargs):
         combined_df = clean_data(combined_df)
         logger.info(f"After cleaning: {len(combined_df)} rows")
         
-        # Aggregate sales - keep the original sale_date from the data
+        # Aggregate sales by product_id only (no date dimension)
         aggregated_df = aggregate_sales(combined_df)
         logger.info(f"After aggregation: {len(aggregated_df)} rows")
         

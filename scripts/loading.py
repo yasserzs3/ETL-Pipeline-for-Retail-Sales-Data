@@ -1,8 +1,10 @@
 """
 Loading module for ETL pipeline.
 
-This module handles loading transformed sales data into PostgreSQL.
-It manages table creation, data validation, and batch inserts with proper error handling.
+This module handles loading transformed and pre-aggregated sales data into PostgreSQL.
+It receives fully aggregated data from the transformation step and does not perform
+any additional aggregation. The module handles table creation, data validation,
+CSV file output, and database loading with proper error handling.
 """
 
 import pandas as pd
@@ -19,14 +21,20 @@ CREATE TABLE IF NOT EXISTS sales_summary (
 );
 """
 
+# SQL to replace existing records on conflict
 INSERT_SQL = """
 INSERT INTO sales_summary 
 (product_id, total_quantity, total_sale_amount)
 VALUES (%s, %s, %s)
 ON CONFLICT (product_id) 
 DO UPDATE SET 
-    total_quantity = sales_summary.total_quantity + EXCLUDED.total_quantity,
-    total_sale_amount = sales_summary.total_sale_amount + EXCLUDED.total_sale_amount;
+    total_quantity = EXCLUDED.total_quantity,
+    total_sale_amount = EXCLUDED.total_sale_amount;
+"""
+
+# SQL to truncate the table
+TRUNCATE_TABLE_SQL = """
+TRUNCATE TABLE sales_summary;
 """
 
 def validate_dataframe(df: pd.DataFrame) -> None:
@@ -69,15 +77,13 @@ def validate_dataframe(df: pd.DataFrame) -> None:
 
 def load_data(**kwargs) -> None:
     """
-    Load transformed data into PostgreSQL sales_summary table and save to CSV.
+    Load pre-aggregated data into PostgreSQL sales_summary table and save to CSV.
     
     Main loading function that:
-    1. Retrieves transformed data from the transform task via XCom
-    2. Aggregates daily data by product_id (removing the date dimension)
-    3. Validates the data structure and content
-    4. Merges with existing CSV data if present
-    5. Saves to CSV file in the output directory
-    6. Loads into PostgreSQL using an upsert pattern (ON CONFLICT)
+    1. Retrieves transformed and already aggregated data from the transform task via XCom
+    2. Validates the data structure and content
+    3. Saves to CSV file in the output directory (overwrites existing file)
+    4. Loads into PostgreSQL, replacing any existing records
     
     Args:
         **kwargs: Airflow context variables, including task_instance
@@ -105,21 +111,15 @@ def load_data(**kwargs) -> None:
         df = pd.read_json(data_json)
         logger.info(f"Received {len(df)} rows from transform step")
         
-        # Aggregate across all dates to get total by product
-        logger.info(f"Aggregating data across all dates by product_id")
-        df_agg = df.groupby('product_id').agg(
-            total_quantity=('total_quantity', 'sum'),
-            total_sale_amount=('total_sale_amount', 'sum')
-        ).reset_index()
-        logger.info(f"Aggregated to {len(df_agg)} products")
+        # No need to aggregate again - data is already aggregated by product_id in the transform step
         
-        # Validate aggregated data
-        validate_dataframe(df_agg)
+        # Validate data
+        validate_dataframe(df)
         
         # Ensure proper data types
-        df_agg['product_id'] = df_agg['product_id'].astype(int)
-        df_agg['total_quantity'] = df_agg['total_quantity'].astype(int)
-        df_agg['total_sale_amount'] = df_agg['total_sale_amount'].astype(float)
+        df['product_id'] = df['product_id'].astype(int)
+        df['total_quantity'] = df['total_quantity'].astype(int)
+        df['total_sale_amount'] = df['total_sale_amount'].astype(float)
         logger.info("Data types converted successfully")
         
         # Save to CSV in data/output directory
@@ -128,44 +128,8 @@ def load_data(**kwargs) -> None:
         os.makedirs(output_dir, exist_ok=True)
         output_file = os.path.join(output_dir, 'sales_summary.csv')
         
-        # Check if file exists already
-        if os.path.exists(output_file):
-            logger.info(f"Existing sales summary file found, loading for merge: {output_file}")
-            try:
-                # Load existing data
-                existing_df = pd.read_csv(output_file)
-                
-                # Ensure existing data has the required columns
-                for col in ['product_id', 'total_quantity', 'total_sale_amount']:
-                    if col not in existing_df.columns:
-                        logger.warning(f"Existing file missing column '{col}', will overwrite file")
-                        raise ValueError(f"Missing column '{col}' in existing file")
-                
-                # Convert columns to correct data types to ensure proper merging
-                existing_df['product_id'] = existing_df['product_id'].astype(int)
-                existing_df['total_quantity'] = existing_df['total_quantity'].astype(int)
-                existing_df['total_sale_amount'] = existing_df['total_sale_amount'].astype(float)
-                
-                # Merge with new data - add quantities and amounts where product_id matches
-                logger.info(f"Merging new data with existing data")
-                df_merged = pd.concat([existing_df, df_agg]).groupby('product_id').agg({
-                    'total_quantity': 'sum',
-                    'total_sale_amount': 'sum'
-                }).reset_index()
-                
-                # Use the merged dataframe for both saving and database loading
-                df_agg = df_merged
-                logger.info(f"Merged data has {len(df_agg)} products")
-            except Exception as e:
-                logger.warning(f"Error reading existing file, will overwrite: {str(e)}")
-        
-        # Ensure final data types before saving
-        df_agg['product_id'] = df_agg['product_id'].astype(int)
-        df_agg['total_quantity'] = df_agg['total_quantity'].astype(int)
-        df_agg['total_sale_amount'] = df_agg['total_sale_amount'].astype(float)
-        
-        # Save the exact same data that will be loaded into PostgreSQL
-        df_agg.to_csv(output_file, index=False)
+        # Always overwrite the CSV file with new data
+        df.to_csv(output_file, index=False)
         logger.info(f"Data saved to CSV file: {output_file}")
         
         # Setup database connection
@@ -174,13 +138,13 @@ def load_data(**kwargs) -> None:
         cursor = conn.cursor()
         
         try:
-            # Create table if it doesn't exist (don't drop it)
+            # Create table if it doesn't exist
             cursor.execute(CREATE_TABLE_SQL)
             logger.info("Created sales_summary table if it didn't exist")
             
-            # Instead of deleting and reinserting, we'll use ON CONFLICT in the INSERT
-            # to handle updating existing records by adding quantities and amounts
-            logger.info("Inserting/updating records with UPSERT pattern")
+            # Truncate the table to remove all existing data
+            cursor.execute(TRUNCATE_TABLE_SQL)
+            logger.info("Truncated sales_summary table")
             
             # Use executemany for more efficient batch insert
             records = [
@@ -189,15 +153,15 @@ def load_data(**kwargs) -> None:
                     int(row['total_quantity']), 
                     float(row['total_sale_amount'])
                 ) 
-                for _, row in df_agg.iterrows()
+                for _, row in df.iterrows()
             ]
             
             if records:
                 cursor.executemany(INSERT_SQL, records)
                 conn.commit()
-                logger.info(f"Successfully inserted/updated {len(records)} rows in database")
+                logger.info(f"Successfully inserted {len(records)} rows in database")
             else:
-                logger.warning("No records to insert/update in database")
+                logger.warning("No records to insert in database")
             
         except Exception as e:
             conn.rollback()

@@ -57,33 +57,33 @@ Extract → Transform → Load
 - **Key Operations**:
   - Combines online and in-store sales data
   - Cleans invalid or null entries
-  - Aggregates sales by product_id and sale_date
-  - Calculates total quantities and amounts
+  - Performs complete aggregation by product_id to calculate total quantities and amounts
+  - Prepares final dataset for loading with no further aggregation needed
 - **Data Validation**:
   - Type checking and conversion
   - Handling of missing values
   - Data quality assurance
 - **Key Functions**:
-  - `transform_data()`: Main function that orchestrates the transformation process and returns JSON data
+  - `transform_data()`: Main function that orchestrates the entire transformation process
   - `load_and_validate_data()`: Loads JSON strings from XCom and converts to DataFrames
   - `convert_numeric_columns()`: Converts string columns to numeric types using pandas to_numeric
   - `clean_data()`: Removes rows with null values and filters out records with non-positive quantities or amounts
-  - `aggregate_sales()`: Groups by product_id and sale_date to sum quantities and sale amounts
+  - `aggregate_sales()`: Performs full aggregation by product_id only, calculating total quantity and total sale amount
 
 #### 3. Load Task
 - **Implementation**: `scripts/loading.py`
 - **Purpose**: Loads processed data into target database
 - **Features**:
   - Creates or updates sales_summary table
-  - Implements upsert pattern for updating existing records
-  - Maintains both database and CSV output
-  - Transaction management for data integrity
+  - Truncates existing data before inserting new data
+  - Loads pre-aggregated data directly with no further processing
+  - Maintains database integrity with transaction handling
 - **Key Functions**:
-  - `load_data()`: Main function that retrieves data from XCom, processes it, and loads to both CSV and database
-  - `validate_dataframe()`: Checks for required columns and ensures quantities and amounts aren't negative
-  - Uses SQL with ON CONFLICT to update existing records by adding quantities and amounts
-  - Merges new data with existing CSV data if output file already exists
-  - Saves final aggregated product-level summary (not date-level) to both database and CSV
+  - `load_data()`: Loads the already-aggregated data to both CSV and database
+  - `validate_dataframe()`: Performs final validation on data structure and values
+  - Uses TRUNCATE TABLE to clear existing data before each load
+  - Overwrites existing CSV output file rather than merging with it
+  - No additional aggregation is performed in this step
 
 ## Implementation Details
 
@@ -152,6 +152,49 @@ apache-airflow-providers-postgres
    ```bash
    docker-compose down
    ```
+
+### Checking Results
+
+After running the DAG, the same aggregated data is stored in both the PostgreSQL database and a CSV output file.
+
+#### Database Results
+
+To check the data in the PostgreSQL database:
+
+```bash
+# Access the PostgreSQL container
+docker exec -it MLops-HW1-postgres bash
+
+# Connect to the database
+psql -U airflow -d airflow
+
+# View the sales summary table
+SELECT * FROM sales_summary;
+
+# Exit
+\q
+exit
+```
+
+#### CSV Output File
+
+The same data is also stored in a CSV file. To view the CSV output file:
+
+```bash
+# Access the Airflow container
+docker exec -it MLops-HW1 bash
+
+# Navigate to the output directory
+cd /opt/airflow/data/output
+
+# View the CSV file
+cat sales_summary.csv
+
+# Exit
+exit
+```
+
+Both the database table and the CSV file contain identical data, as they are generated from the same processed dataset during the load phase.
 
 ## Testing
 
