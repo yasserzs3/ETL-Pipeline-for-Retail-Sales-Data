@@ -128,6 +128,38 @@ dag = DAG(
 - pandas
 - psycopg2-binary
 
+## Running the Project
+
+### Clone the Repository
+```bash
+git clone https://github.com/yasserzs3/MLOps-HW1.git
+cd MLOps-HW1
+```
+
+### Prerequisites
+- Docker
+- Docker Compose
+
+### Running the Application
+
+To start all services:
+```bash
+cd docker
+docker-compose up --build -d
+```
+
+This will:
+- Build the Docker images if they don't exist
+- Start all services in detached mode
+- Set up the required network connections
+- Initialize the PostgreSQL database
+- Start the Airflow webserver and scheduler
+
+To stop and remove all containers:
+```bash
+docker-compose down
+```
+
 ## Code Documentation
 
 Each task in the pipeline is thoroughly documented with docstrings and comments explaining:
