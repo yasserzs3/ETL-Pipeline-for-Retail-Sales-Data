@@ -110,31 +110,4 @@ def transform_data(**kwargs):
         return aggregated_df.to_json()
         
     except Exception as e:
-        raise
-
-if __name__ == "__main__":
-    # For testing
-    from datetime import datetime
-    
-    test_date = datetime.now().strftime('%Y-%m-%d')
-    test_data = {
-        'online_data': pd.DataFrame({
-            'product_id': ['1', '2'],
-            'quantity': ['2', '3'],
-            'sale_amount': ['20.0', '30.0'],
-            'sale_date': [test_date, test_date]
-        }).to_json(),
-        'in_store_data': pd.DataFrame({
-            'product_id': ['1', '3'],
-            'quantity': ['1', '2'],
-            'sale_amount': ['10.0', '25.0'],
-            'sale_date': [test_date, test_date]
-        }).to_json()
-    }
-    
-    class TestContext:
-        def xcom_pull(self, task_ids):
-            return test_data
-    
-    result = transform_data(ti=TestContext(), ds=test_date)
-    print("Transform test successful") 
+        raise 

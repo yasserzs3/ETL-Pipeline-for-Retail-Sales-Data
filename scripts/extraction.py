@@ -72,12 +72,11 @@ def validate_dataframe(df: pd.DataFrame, required_columns: List[str]) -> bool:
         
     return True
 
-def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataFrame:
+def extract_online_sales(pg_hook: PostgresHook) -> pd.DataFrame:
     """
     Extract all online sales data from PostgreSQL.
     
     Args:
-        execution_date: Date parameter (no longer used for filtering)
         pg_hook: PostgreSQL connection hook
         
     Returns:
@@ -90,13 +89,10 @@ def extract_online_sales(execution_date: str, pg_hook: PostgresHook) -> pd.DataF
     validate_dataframe(online_df, REQUIRED_COLUMNS)
     return online_df
 
-def extract_store_sales(execution_date: str) -> pd.DataFrame:
+def extract_store_sales() -> pd.DataFrame:
     """
     Extract in-store sales data from CSV.
     
-    Args:
-        execution_date: Date to extract data for (no longer used for filtering)
-        
     Returns:
         DataFrame containing in-store sales data
     """
@@ -161,8 +157,8 @@ def extract_data(**kwargs) -> Dict[str, str]:
         
         # Extract from both sources
         pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
-        online_df = extract_online_sales(execution_date, pg_hook)
-        in_store_df = extract_store_sales(execution_date)
+        online_df = extract_online_sales(pg_hook)
+        in_store_df = extract_store_sales()
         
         # Return data via XCom
         return {
@@ -171,10 +167,4 @@ def extract_data(**kwargs) -> Dict[str, str]:
         }
         
     except Exception as e:
-        raise
-
-if __name__ == "__main__":
-    # For testing
-    test_date = datetime.now().strftime('%Y-%m-%d')
-    result = extract_data(ds=test_date)
-    print("Extraction test successful") 
+        raise 

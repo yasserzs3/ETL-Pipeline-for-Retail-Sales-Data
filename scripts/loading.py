@@ -5,8 +5,6 @@ This module handles loading transformed sales data into PostgreSQL.
 It manages table creation, data validation, and batch inserts with proper error handling.
 """
 
-from typing import List, Tuple
-
 import pandas as pd
 from airflow.providers.postgres.hooks.postgres import PostgresHook
 
@@ -120,26 +118,4 @@ def load_data(**kwargs) -> None:
             conn.close()
             
     except Exception as e:
-        raise
-
-if __name__ == "__main__":
-    # For testing
-    import json
-    from datetime import datetime
-    
-    test_date = datetime.now().strftime('%Y-%m-%d')
-    test_data = pd.DataFrame({
-        'product_id': [1, 2],
-        'total_quantity': [3, 4],
-        'total_sale_amount': [30.0, 40.0],
-        'sale_date': [test_date, test_date]
-    })
-    
-    class TestContext:
-        def xcom_pull(self, task_ids):
-            return test_data.to_json()
-            
-        def xcom_push(self, key, value):
-            print(f"XCom push: {key} = {value}")
-    
-    load_data(ti=TestContext(), ds=test_date) 
+        raise 
