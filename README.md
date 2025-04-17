@@ -189,8 +189,10 @@ Before deploying with Docker Swarm, you need to build the Airflow image locally.
 1. **Build the Airflow Image**
    ```bash
    cd docker
-   docker build -t mlops-airflow:latest .
+   docker build -t mlops-airflow:latest -f Dockerfile ..
    ```
+   
+   > **Note:** It's important to use `..` at the end of the command to set the build context to the parent directory where your project files (requirements.txt, dags/, scripts/, data/) are located. If you run just `docker build -t mlops-airflow:latest .` from the docker directory, it will fail because it can't find the required files.
 
 2. **Use the Image in Your Stack Configuration**
    
