@@ -1,5 +1,29 @@
 # ETL Pipeline for Retail Sales Data
 
+## Table of Contents
+- [Project Overview](#project-overview)
+- [Project Structure](#project-structure)
+- [DAG Workflow](#dag-workflow)
+  - [Extract Task](#1-extract-task)
+  - [Transform Task](#2-transform-task)
+  - [Load Task](#3-load-task)
+- [Implementation Details](#implementation-details)
+  - [Technologies Used](#technologies-used)
+  - [Dependencies](#dependencies)
+- [Deployment and Usage](#deployment-and-usage)
+  - [Basic Setup with Docker Compose](#basic-setup-with-docker-compose)
+  - [Detailed Docker Compose Deployment](#detailed-docker-compose-deployment)
+  - [Docker Swarm Deployment](#docker-swarm-deployment)
+  - [Scaling and Load Balancing with Docker Swarm](#scaling-and-load-balancing-with-docker-swarm)
+  - [Checking Results](#checking-results)
+- [Testing and Development](#testing-and-development)
+  - [Testing](#testing)
+  - [Development Environment](#development)
+- [Challenges and Reflections](#challenges-and-reflections)
+  - [Airflow Setup Challenges](#airflow-setup-challenges)
+  - [Docker Swarm Deployment Challenges](#docker-swarm-deployment-challenges)
+  - [Pipeline Design Challenges](#pipeline-design-challenges)
+
 ## Project Overview
 
 This project implements an ETL (Extract, Transform, Load) pipeline for processing daily retail sales data from multiple sources using Apache Airflow. The pipeline combines online sales data from a PostgreSQL database with in-store sales from CSV files, processes the combined data, and loads the results into a centralized MySQL database.
@@ -112,13 +136,13 @@ apache-airflow
 apache-airflow-providers-postgres
 ```
 
-## Running the Project
+## Deployment and Usage
 
 ### Prerequisites
 - Docker and Docker Compose installed
 - Git for cloning the repository
 
-### Setup and Execution
+### Basic Setup with Docker Compose
 
 1. **Clone the Repository**
    ```bash
@@ -152,6 +176,290 @@ apache-airflow-providers-postgres
 5. **Stop the Services**
    ```bash
    docker-compose down
+   ```
+
+### Docker Swarm Deployment
+
+For production deployments or to scale the application, you can use Docker Swarm for orchestration and load balancing.
+
+#### Building Airflow Image
+
+Before deploying with Docker Swarm, you need to build the Airflow image locally.
+
+1. **Build the Airflow Image**
+   ```bash
+   cd docker
+   docker build -t mlops-airflow:latest -f Dockerfile ..
+   ```
+   
+   > **Note:** It's important to use `..` at the end of the command to set the build context to the parent directory where your project files (requirements.txt, dags/, scripts/, data/) are located. If you run just `docker build -t mlops-airflow:latest .` from the docker directory, it will fail because it can't find the required files.
+
+2. **Use the Image in Your Stack Configuration**
+   
+   Make sure your `docker/docker-stack.yml` references this image:
+   ```yaml
+   services:
+     webserver:
+       image: mlops-airflow:latest
+       # other configuration...
+   ```
+
+#### Setting Up Docker Swarm
+
+1. **Initialize Docker Swarm** (if not already done)
+   ```bash
+   docker swarm init
+   ```
+
+2. **Deploy the Stack**
+   ```bash
+   docker stack deploy -c docker/docker-stack.yml mlops-stack
+   ```
+
+   This command:
+   - Creates an overlay network for service communication
+   - Deploys PostgreSQL and MySQL databases with persistent volumes
+   - Sets up the Airflow initialization service to create connections
+   - Deploys multiple instances of the webserver and scheduler for high availability
+
+3. **Verify Stack Deployment**
+   ```bash
+   docker service ls
+   ```
+
+   You should see the following services:
+   - mlops-stack_postgres
+   - mlops-stack_mysql
+   - mlops-stack_airflow-init
+   - mlops-stack_webserver (with multiple replicas)
+   - mlops-stack_scheduler (with multiple replicas)
+
+4. **Wait for Initialization to Complete**
+   ```bash
+   docker service logs mlops-stack_airflow-init --follow
+   ```
+
+   Wait until you see output indicating successful initialization:
+   ```
+   Airflow initialization complete!
+   ```
+   
+   The initialization service creates the necessary database tables, connections, and default user. The service will exit with code 0 when complete.
+   
+   You can verify initialization is complete with:
+   ```bash
+   docker service ps mlops-stack_airflow-init
+   ```
+   
+   Look for "Shutdown" or "Complete" status in the output.
+
+5. **Access Airflow UI**
+   - Open `http://localhost:8080` in your browser
+   - Login with:
+     - Username: admin
+     - Password: admin
+
+6. **Scaling Services**
+   To scale specific services (for example, to add more webserver instances):
+   ```bash
+   docker service scale mlops-stack_webserver=3
+   ```
+
+7. **Remove the Stack**
+   When you're done, you can remove the entire stack:
+   ```bash
+   docker stack rm mlops-stack
+   ```
+
+8. **Leave Swarm Mode** (optional)
+   ```bash
+   docker swarm leave --force
+   ```
+
+#### Key Benefits of Docker Swarm Deployment
+
+- **High Availability**: Multiple replicas ensure continuous operation
+- **Load Balancing**: Requests are distributed across service instances
+- **Service Discovery**: Built-in DNS resolution for inter-service communication
+- **Rolling Updates**: Update services without downtime
+- **Self-Healing**: Automatically restarts failed containers
+
+#### Troubleshooting Swarm Deployment
+
+- **Check Service Logs**
+  ```bash
+  docker service logs mlops-stack_webserver
+  ```
+
+- **Inspect Service**
+  ```bash
+  docker service inspect mlops-stack_webserver
+  ```
+
+- **View Running Tasks**
+  ```bash
+  docker service ps mlops-stack_webserver
+  ```
+
+- **Check Network Connectivity**
+  ```bash
+  docker network inspect mlops-stack_airflow-network
+  ```
+
+### Scaling and Load Balancing with Docker Swarm
+
+For production deployments with high availability and scalability requirements, Docker Swarm provides built-in load balancing, service discovery, and scaling capabilities.
+
+Key scaling features in Docker Swarm:
+
+1. **Service Scaling**
+   ```bash
+   docker service scale mlops-stack_webserver=3
+   ```
+
+2. **Load Balancing**
+   Docker Swarm provides automatic load balancing across service replicas without additional configuration.
+
+3. **High Availability**
+   Configure services with multiple replicas in the docker-stack.yml:
+   ```yaml
+   services:
+     webserver:
+       image: mlops-airflow:latest
+       deploy:
+         replicas: 3
+         restart_policy:
+           condition: on-failure
+   ```
+
+4. **Resource Constraints**
+   ```yaml
+   services:
+     webserver:
+       deploy:
+         resources:
+           limits:
+             cpus: '1'
+             memory: 1G
+           reservations:
+             cpus: '0.5'
+             memory: 512M
+   ```
+
+5. **Rolling Updates**
+   ```yaml
+   services:
+     webserver:
+       deploy:
+         update_config:
+           parallelism: 1
+           delay: 10s
+           order: start-first
+   ```
+
+Refer to the Docker Swarm Deployment section for complete instructions on setting up and managing Docker Swarm deployments.
+
+### Detailed Docker Compose Deployment
+
+This section provides comprehensive deployment instructions using Docker Compose for development and testing environments.
+
+#### Building Docker Images
+
+1. **Build All Services at Once**
+   ```bash
+   cd docker
+   docker-compose build
+   ```
+
+2. **Build with No Cache** (for troubleshooting)
+   ```bash
+   docker-compose build --no-cache
+   ```
+
+#### Deploying the Application
+
+1. **Start in Detached Mode**
+   ```bash
+   docker-compose up -d
+   ```
+
+2. **Start with Build Flag** (build images before starting)
+   ```bash
+   docker-compose up -d --build
+   ```
+
+#### Monitoring Deployment
+
+1. **View Running Containers**
+   ```bash
+   docker-compose ps
+   ```
+
+2. **View Service Logs**
+   ```bash
+   # All logs
+   docker-compose logs
+   
+   # Specific service logs with follow option
+   docker-compose logs -f [service_name]
+   
+   # Tail specific number of lines
+   docker-compose logs --tail=100 [service_name]
+   ```
+
+3. **Checking Service Health**
+   ```bash
+   # Check database connection
+   docker-compose exec [database_service] [database_check_command]
+   
+   # Check web service
+   curl http://localhost:8080
+   ```
+
+#### Interacting with Services
+
+1. **Execute Commands in Containers**
+   ```bash
+   # Run bash in a container
+   docker-compose exec [service_name] bash
+   
+   # Run Airflow commands
+   docker-compose exec [airflow_service] airflow info
+   docker-compose exec [airflow_service] airflow dags list
+   docker-compose exec [airflow_service] airflow dags trigger retail_sales_etl
+   ```
+
+2. **Access Database Shells**
+   ```bash
+   # Connect to database
+   docker-compose exec [database_service] [database_connection_command]
+   ```
+
+#### Managing Deployment
+
+1. **Stop Services**
+   ```bash
+   docker-compose stop
+   ```
+
+2. **Start Stopped Services**
+   ```bash
+   docker-compose start
+   ```
+
+3. **Restart Services**
+   ```bash
+   docker-compose restart [service_name]
+   ```
+
+4. **Remove Containers while Preserving Volumes**
+   ```bash
+   docker-compose down
+   ```
+
+5. **Complete Cleanup** (including volumes)
+   ```bash
+   docker-compose down -v
    ```
 
 ### Checking Results
@@ -197,7 +505,9 @@ exit
 
 Both the database table and the CSV file contain identical data, as they are generated from the same processed dataset during the load phase.
 
-## Testing
+## Testing and Development
+
+### Testing
 
 Run the automated tests with:
 ```bash
@@ -209,7 +519,7 @@ For test coverage report:
 pytest --cov=scripts
 ```
 
-## Development
+### Development
 
 When developing locally:
 1. Set up a virtual environment
@@ -234,10 +544,22 @@ When developing locally:
 
 **Connection Management:** Establishing stable connections between Airflow and PostgreSQL required careful configuration. Environment variables needed to be consistent across services for seamless integration.
 
+### Docker Swarm Deployment Challenges
+
+**Airflow Component Orchestration:** Configuring Airflow's multiple components (webserver, scheduler, worker, init) for Docker Swarm presented significant challenges. Each component required specific environment variables and startup conditions.
+
+**Initialization Sequence:** The initialization service needed to complete successfully before other services could start properly. Creating a reliable startup sequence with proper dependency management was complex.
+
+**Service Discovery:** Ensuring that Airflow components could discover each other in the Swarm network required careful configuration of network aliases and DNS settings.
+
+**Persistent Storage:** Managing persistent volumes across Swarm nodes for databases and Airflow's metadata was challenging, especially when scaling services across multiple nodes.
+
+**Load Balancing Configuration:** While Swarm provides built-in load balancing, configuring it optimally for Airflow's webserver required additional testing to ensure session persistence and proper request routing.
+
 ### Pipeline Design Challenges
 
 **Data Accumulation Issue:** Earlier versions of the pipeline inadvertently accumulated data across DAG runs instead of replacing it. This was fixed by implementing table truncation and proper upsert patterns.
 
 **Separation of Responsibilities:** Initially, both transform and load steps performed aggregation, causing data duplication. We refactored to ensure all aggregation happens in the transform step only.
 
-**Error Handling:** Implementing robust error handling required careful transaction management and validation at each stage. Consistent logging patterns were crucial for troubleshooting. 
+**Error Handling:** Implementing robust error handling required careful transaction management and validation at each stage. Consistent logging patterns were crucial for troubleshooting.

@@ -1,0 +1,179 @@
+version: '3.8'
+
+networks:
+  airflow-network:
+    driver: overlay
+    attachable: true
+
+volumes:
+  postgres_data:
+  mysql_data:
+  airflow_logs:
+
+services:
+  postgres:
+    image: postgres:13
+    hostname: postgres
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      airflow-network:
+        aliases:
+          - postgres.airflow
+
+  mysql:
+    image: mysql:8.0
+    hostname: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: airflow
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+      MYSQL_DATABASE: airflow
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "airflow", "-pairflow"]
+      interval: 5s
+      retries: 5
+    deploy:
+      replicas: 1
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      airflow-network:
+        aliases:
+          - mysql.airflow
+
+  airflow-init:
+    image: mlops-airflow:latest
+    hostname: airflow-init
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=a-very-secret-key
+      - AIRFLOW__CORE__FERNET_KEY=Yw9ewME2CpPYDxn72HzVgYJHM0D6rGK7qANTrXz78QE=
+      - AIRFLOW_CONN_POSTGRES_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW_CONN_MYSQL_CONN=mysql://airflow:airflow@mysql:3306/airflow
+    command: |
+      bash -c "
+        airflow db init &&
+        airflow users create \
+          --username admin \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email admin@example.com \
+          --password admin &&
+        airflow connections add 'postgres_conn' \
+          --conn-type 'postgres' \
+          --conn-host 'postgres' \
+          --conn-schema 'airflow' \
+          --conn-login 'airflow' \
+          --conn-password 'airflow' \
+          --conn-port '5432' &&
+        airflow connections add 'mysql_conn' \
+          --conn-type 'mysql' \
+          --conn-host 'mysql' \
+          --conn-schema 'airflow' \
+          --conn-login 'airflow' \
+          --conn-password 'airflow' \
+          --conn-port '3306'
+      "
+    deploy:
+      restart_policy:
+        condition: on-failure
+        max_attempts: 5
+      placement:
+        constraints: [node.role == manager]
+    networks:
+      airflow-network:
+        aliases:
+          - airflow-init.airflow
+
+  webserver:
+    image: mlops-airflow:latest
+    hostname: webserver
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=a-very-secret-key
+      - AIRFLOW__CORE__FERNET_KEY=Yw9ewME2CpPYDxn72HzVgYJHM0D6rGK7qANTrXz78QE=
+      - _AIRFLOW_DB_UPGRADE=true
+      - _AIRFLOW_WWW_USER_CREATE=true
+      - _AIRFLOW_WWW_USER_USERNAME=admin
+      - _AIRFLOW_WWW_USER_PASSWORD=admin
+      - AIRFLOW_CONN_POSTGRES_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW_CONN_MYSQL_CONN=mysql://airflow:airflow@mysql:3306/airflow
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    command: webserver
+    ports:
+      - "8080:8080"
+    deploy:
+      mode: replicated
+      replicas: 2
+      update_config:
+        parallelism: 1
+      restart_policy:
+        condition: any
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      airflow-network:
+        aliases:
+          - webserver.airflow
+
+  scheduler:
+    image: mlops-airflow:latest
+    hostname: scheduler
+    environment:
+      - AIRFLOW__CORE__EXECUTOR=LocalExecutor
+      - AIRFLOW__DATABASE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__SQL_ALCHEMY_CONN=postgresql+psycopg2://airflow:airflow@postgres/airflow
+      - AIRFLOW__CORE__LOAD_EXAMPLES=false
+      - AIRFLOW__WEBSERVER__SECRET_KEY=a-very-secret-key
+      - AIRFLOW__CORE__FERNET_KEY=Yw9ewME2CpPYDxn72HzVgYJHM0D6rGK7qANTrXz78QE=
+      - AIRFLOW_CONN_POSTGRES_CONN=postgresql://airflow:airflow@postgres:5432/airflow
+      - AIRFLOW_CONN_MYSQL_CONN=mysql://airflow:airflow@mysql:3306/airflow
+    volumes:
+      - airflow_logs:/opt/airflow/logs
+    command: scheduler
+    deploy:
+      mode: replicated
+      replicas: 2
+      update_config:
+        parallelism: 1
+      restart_policy:
+        condition: any
+        max_attempts: 3
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 512M
+    networks:
+      airflow-network:
+        aliases:
+          - scheduler.airflow 
