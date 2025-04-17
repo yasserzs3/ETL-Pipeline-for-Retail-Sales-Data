@@ -1,4 +1,3 @@
-
 x-airflow-common: &airflow-common
   build:
     context: ..
@@ -16,6 +15,11 @@ x-airflow-common: &airflow-common
     POSTGRES_USER: airflow
     POSTGRES_PASSWORD: airflow
     POSTGRES_DB: airflow
+    MYSQL_HOST: mysql
+    MYSQL_PORT: 3306
+    MYSQL_USER: airflow
+    MYSQL_PASSWORD: airflow
+    MYSQL_DATABASE: airflow
   volumes:
     - ../dags:/opt/airflow/dags
     - ../scripts:/opt/airflow/scripts
@@ -23,6 +27,8 @@ x-airflow-common: &airflow-common
     - airflow_logs:/opt/airflow/logs
   depends_on:
     postgres:
+      condition: service_healthy
+    mysql:
       condition: service_healthy
 
 services:
@@ -39,6 +45,24 @@ services:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
+      interval: 5s
+      retries: 5
+    restart: always
+
+  mysql:
+    container_name: MLops-HW1-mysql
+    image: mysql:8.0
+    environment:
+      MYSQL_ROOT_PASSWORD: airflow
+      MYSQL_USER: airflow
+      MYSQL_PASSWORD: airflow
+      MYSQL_DATABASE: airflow
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "airflow", "-pairflow"]
       interval: 5s
       retries: 5
     restart: always
@@ -66,7 +90,14 @@ services:
           --conn-schema 'airflow' \
           --conn-login 'airflow' \
           --conn-password 'airflow' \
-          --conn-port '5432'
+          --conn-port '5432' &&
+        airflow connections add 'mysql_conn' \
+          --conn-type 'mysql' \
+          --conn-host 'mysql' \
+          --conn-schema 'airflow' \
+          --conn-login 'airflow' \
+          --conn-password 'airflow' \
+          --conn-port '3306'
 
   airflow-webserver:
     <<: *airflow-common
@@ -89,4 +120,5 @@ services:
 
 volumes:
   postgres_data:
+  mysql_data:
   airflow_logs: 

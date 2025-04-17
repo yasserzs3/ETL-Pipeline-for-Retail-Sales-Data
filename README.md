@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This project implements an ETL (Extract, Transform, Load) pipeline for processing daily retail sales data from multiple sources using Apache Airflow. The pipeline combines online sales data from a PostgreSQL database with in-store sales from CSV files, processes the combined data, and loads the results into a centralized sales summary database.
+This project implements an ETL (Extract, Transform, Load) pipeline for processing daily retail sales data from multiple sources using Apache Airflow. The pipeline combines online sales data from a PostgreSQL database with in-store sales from CSV files, processes the combined data, and loads the results into a centralized MySQL database.
 
 ## Project Structure
 
@@ -72,14 +72,14 @@ Extract → Transform → Load
 
 #### 3. Load Task
 - **Implementation**: `scripts/loading.py`
-- **Purpose**: Loads processed data into target database
+- **Purpose**: Loads processed data into target MySQL database
 - **Features**:
   - Creates or updates sales_summary table
   - Truncates existing data before inserting new data
   - Loads pre-aggregated data directly with no further processing
   - Maintains database integrity with transaction handling
 - **Key Functions**:
-  - `load_data()`: Loads the already-aggregated data to both CSV and database
+  - `load_data()`: Loads the already-aggregated data to both CSV and MySQL database
   - `validate_dataframe()`: Performs final validation on data structure and values
   - Uses TRUNCATE TABLE to clear existing data before each load
   - Overwrites existing CSV output file rather than merging with it
@@ -90,7 +90,8 @@ Extract → Transform → Load
 ### Technologies Used
 
 - **Apache Airflow**: Workflow orchestration
-- **PostgreSQL**: Database storage
+- **PostgreSQL**: Source database for online sales
+- **MySQL**: Target database for aggregated sales
 - **Pandas**: Data manipulation and processing
 - **Docker & Docker Compose**: Containerization and deployment
 
@@ -155,24 +156,24 @@ apache-airflow-providers-postgres
 
 ### Checking Results
 
-After running the DAG, the same aggregated data is stored in both the PostgreSQL database and a CSV output file.
+After running the DAG, the same aggregated data is stored in both the MySQL database and a CSV output file.
 
 #### Database Results
 
-To check the data in the PostgreSQL database:
+To check the data in the MySQL database:
 
 ```bash
-# Access the PostgreSQL container
-docker exec -it MLops-HW1-postgres bash
+# Access the MySQL container
+docker exec -it MLops-HW1-mysql bash
 
 # Connect to the database
-psql -U airflow -d airflow
+mysql -u airflow -pairflow airflow
 
 # View the sales summary table
 SELECT * FROM sales_summary;
 
 # Exit
-\q
+exit
 exit
 ```
 

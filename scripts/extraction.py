@@ -2,6 +2,8 @@
 Extraction module for ETL pipeline.
 
 This module handles data extraction from PostgreSQL and CSV files.
+Note: While extraction uses PostgreSQL, the loading phase uses MySQL.
+
 It provides functionality to:
 1. Extract online sales data from PostgreSQL
 2. Extract in-store sales data from CSV

@@ -5,7 +5,7 @@ This DAG orchestrates the entire ETL process from extraction to loading.
 The pipeline performs the following steps:
 1. Extract: Fetches sales data from PostgreSQL and CSV sources
 2. Transform: Cleans and aggregates the data by product
-3. Load: Writes the aggregated results to PostgreSQL
+3. Load: Writes the aggregated results to MySQL
 """
 
 from datetime import datetime, timedelta
@@ -78,7 +78,7 @@ load_task = PythonOperator(
     dag=dag,
     doc_md="""
     ### Load Task
-    Loads the transformed data into PostgreSQL:
+    Loads the transformed data into MySQL:
     - Inserts aggregated sales data into sales_summary table
     - Uses batch processing for better performance
     """

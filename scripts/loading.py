@@ -1,35 +1,34 @@
 """
 Loading module for ETL pipeline.
 
-This module handles loading transformed and pre-aggregated sales data into PostgreSQL.
+This module handles loading transformed and pre-aggregated sales data into MySQL.
 It receives fully aggregated data from the transformation step and does not perform
 any additional aggregation. The module handles table creation, data validation,
 CSV file output, and database loading with proper error handling.
 """
 
 import pandas as pd
-from airflow.providers.postgres.hooks.postgres import PostgresHook
+from airflow.providers.mysql.hooks.mysql import MySqlHook
 import os
 import logging
 
 # SQL Statements
 CREATE_TABLE_SQL = """
 CREATE TABLE IF NOT EXISTS sales_summary (
-    product_id INTEGER PRIMARY KEY,
-    total_quantity INTEGER NOT NULL,
+    product_id INT PRIMARY KEY,
+    total_quantity INT NOT NULL,
     total_sale_amount DECIMAL(10,2) NOT NULL
 );
 """
 
-# SQL to replace existing records on conflict
+# SQL to replace existing records on duplicate key
 INSERT_SQL = """
 INSERT INTO sales_summary 
 (product_id, total_quantity, total_sale_amount)
 VALUES (%s, %s, %s)
-ON CONFLICT (product_id) 
-DO UPDATE SET 
-    total_quantity = EXCLUDED.total_quantity,
-    total_sale_amount = EXCLUDED.total_sale_amount;
+ON DUPLICATE KEY UPDATE 
+    total_quantity = VALUES(total_quantity),
+    total_sale_amount = VALUES(total_sale_amount);
 """
 
 # SQL to truncate the table
@@ -77,13 +76,13 @@ def validate_dataframe(df: pd.DataFrame) -> None:
 
 def load_data(**kwargs) -> None:
     """
-    Load pre-aggregated data into PostgreSQL sales_summary table and save to CSV.
+    Load pre-aggregated data into MySQL sales_summary table and save to CSV.
     
     Main loading function that:
     1. Retrieves transformed and already aggregated data from the transform task via XCom
     2. Validates the data structure and content
     3. Saves to CSV file in the output directory (overwrites existing file)
-    4. Loads into PostgreSQL, replacing any existing records
+    4. Loads into MySQL, replacing any existing records
     
     Args:
         **kwargs: Airflow context variables, including task_instance
@@ -133,8 +132,8 @@ def load_data(**kwargs) -> None:
         logger.info(f"Data saved to CSV file: {output_file}")
         
         # Setup database connection
-        pg_hook = PostgresHook(postgres_conn_id='postgres_conn')
-        conn = pg_hook.get_conn()
+        mysql_hook = MySqlHook(mysql_conn_id='mysql_conn')
+        conn = mysql_hook.get_conn()
         cursor = conn.cursor()
         
         try:

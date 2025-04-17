@@ -10,3 +10,5 @@ pytest-mock
 pytest-cov 
 apache-airflow
 apache-airflow-providers-postgres
+mysql-connector-python
+apache-airflow-providers-mysql
